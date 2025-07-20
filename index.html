@@ -67,20 +67,29 @@
             background-color: #edf2f7;
             padding: 1rem;
             border-radius: 4px;
-            margin-bottom: 0.5rem;
+            margin-bottom: 1rem; /* Increased margin */
+            border-left: 5px solid #4299e1; /* Add a highlight color */
         }
-        #event-list li pre {
-            font-family: "Courier New", Courier, monospace;
-            font-size: 0.9rem;
-            white-space: pre-wrap;
+        #event-list li .event-prop {
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: flex-start;
+        }
+        #event-list li .prop-label {
+            font-weight: 600;
+            color: #4a5568;
+            margin-right: 0.5rem;
+            flex-shrink: 0;
+        }
+        #event-list li .prop-value {
+            color: #1a202c;
             word-break: break-all;
-            margin: 0;
         }
         #event-list li img {
             max-width: 100%;
             max-height: 250px;
             border-radius: 4px;
-            margin-bottom: 1rem;
+            margin-top: 0.25rem;
             display: block;
         }
         .status {
@@ -132,11 +141,36 @@
     <script>
         // --- Configuration ---
         const API_URL = 'https://icecdp.onrender.com';
+        
+        console.log(`API URL set to: ${API_URL}`);
 
         // --- DOM Elements ---
         const eventForm = document.getElementById('event-form');
         const eventList = document.getElementById('event-list');
         const statusDiv = document.getElementById('connection-status');
+
+        // --- Helper Function ---
+        /**
+         * Formats an ISO date string into a more readable local time format.
+         * @param {string} isoString The ISO date string.
+         * @returns {string} A formatted date string (e.g., "Jul 21, 2024, 10:05:30 AM").
+         */
+        function formatReadableDate(isoString) {
+            if (!isoString) return 'N/A';
+            try {
+                const date = new Date(isoString);
+                return date.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            } catch (e) {
+                return isoString; // Fallback to original string if invalid
+            }
+        }
 
         // --- Logic for Submitting Events ---
         eventForm.addEventListener('submit', async (e) => {
@@ -192,26 +226,50 @@
                 console.log('SSE event received:', eventData);
 
                 const listItem = document.createElement('li');
-                const pre = document.createElement('pre');
-                pre.textContent = JSON.stringify(eventData, null, 2);
 
-                // Check if prop1 is a string that looks like an image URL
+                // Helper function to create a property row
+                const createPropDiv = (label, value) => {
+                    const div = document.createElement('div');
+                    div.className = 'event-prop';
+                    div.innerHTML = `<span class="prop-label">${label}:</span><span class="prop-value">${value}</span>`;
+                    return div;
+                };
+
+                // Add Event Name and Timestamp
+                listItem.appendChild(createPropDiv('Event', eventData.eventName || 'N/A'));
+                listItem.appendChild(createPropDiv('Timestamp', formatReadableDate(eventData.eventTimestamp)));
+
+                // --- Robustly handle Property 1 (Image or Text) ---
+                const prop1Div = document.createElement('div');
+                prop1Div.className = 'event-prop';
+                prop1Div.innerHTML = `<span class="prop-label">Property 1:</span>`;
+
                 const prop1Value = eventData.prop1;
-                if (prop1Value && typeof prop1Value === 'string') {
-                    const isImage = /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(prop1Value) || prop1Value.startsWith('data:image');
-                    if (isImage) {
-                        const img = document.createElement('img');
-                        img.src = prop1Value;
-                        img.alt = eventData.eventName;
-                        // Hide the image element if it fails to load
-                        img.onerror = () => { img.style.display = 'none'; };
-                        // Prepend the image so it appears above the text
-                        listItem.appendChild(img);
-                    }
+                const isImage = prop1Value && typeof prop1Value === 'string' && (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(prop1Value) || prop1Value.startsWith('data:image'));
+
+                if (isImage) {
+                    const img = document.createElement('img');
+                    img.src = prop1Value;
+                    img.alt = eventData.eventName;
+                    // **FIXED**: On error, replace the image with text indicating the failure.
+                    img.onerror = () => {
+                        const fallbackText = document.createElement('span');
+                        fallbackText.className = 'prop-value';
+                        fallbackText.textContent = `${prop1Value} (Image failed to load)`;
+                        img.replaceWith(fallbackText);
+                    };
+                    prop1Div.appendChild(img);
+                } else {
+                    const textValue = document.createElement('span');
+                    textValue.className = 'prop-value';
+                    textValue.textContent = prop1Value || 'N/A';
+                    prop1Div.appendChild(textValue);
                 }
-                
-                // Append the raw data text
-                listItem.appendChild(pre);
+                listItem.appendChild(prop1Div);
+
+                // Add other properties
+                listItem.appendChild(createPropDiv('Property 2', eventData.prop2 || 'N/A'));
+                listItem.appendChild(createPropDiv('Property 3', eventData.prop3 || 'N/A'));
 
                 // Add the new event to the top of the list
                 eventList.prepend(listItem);
