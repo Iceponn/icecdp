@@ -1,0 +1,19 @@
+# render.yaml
+# This file tells Render how to build and run your application.
+# You can use this with a "Blueprint" instance on Render for automatic setup.
+
+services:
+  # A name for your service
+  - name: realtime-event-api
+    # The type of service. 'web' means it's an HTTP server.
+    type: web
+    # The runtime environment. Render will use a Node.js environment.
+    env: node
+    # The branch to deploy from your Git repository
+    branch: main
+    # The command to install dependencies.
+    buildCommand: "npm install"
+    # The command to start your web server.
+    startCommand: "npm start"
+    # Optional: Health check path. Render pings this to ensure your app is live.
+    healthCheckPath: /

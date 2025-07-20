@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Event Tester</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background-color: #f4f7f9;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #1a202c;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        form {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+        @media (min-width: 600px) {
+            form {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 4px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            background-color: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            grid-column: 1 / -1; /* Span full width */
+        }
+        button:hover {
+            background-color: #3182ce;
+        }
+        #event-list {
+            list-style-type: none;
+            padding: 0;
+            margin-top: 2rem;
+        }
+        #event-list li {
+            background-color: #edf2f7;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+        #event-list li pre {
+            font-family: "Courier New", Courier, monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin: 0;
+        }
+        #event-list li img {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            display: block;
+        }
+        .status {
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+        }
+        .status.connected {
+            background-color: #c6f6d5;
+            color: #2f855a;
+        }
+        .status.disconnected {
+            background-color: #fed7d7;
+            color: #c53030;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Real-Time Event API Tester</h1>
+
+        <!-- Connection Status -->
+        <div id="connection-status" class="status disconnected">
+            Connecting to event stream...
+        </div>
+
+        <!-- Form to Submit New Events -->
+        <section>
+            <h2>Submit a New Event</h2>
+            <form id="event-form">
+                <input type="text" id="eventName" placeholder="Event Name (e.g., page_view)" required>
+                <input type="text" id="prop1" placeholder="Property 1 (or image URL)" required>
+                <input type="text" id="prop2" placeholder="Property 2" required>
+                <input type="text" id="prop3" placeholder="Property 3" required>
+                <button type="submit">Send Event</button>
+            </form>
+        </section>
+
+        <!-- Real-time list of received events -->
+        <section>
+            <h2>Live Event Feed</h2>
+            <ul id="event-list">
+                <li>Waiting for events...</li>
+            </ul>
+        </section>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const API_URL = 'http://localhost:3000';
+
+        // --- DOM Elements ---
+        const eventForm = document.getElementById('event-form');
+        const eventList = document.getElementById('event-list');
+        const statusDiv = document.getElementById('connection-status');
+
+        // --- Logic for Submitting Events ---
+        eventForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const eventData = {
+                eventName: document.getElementById('eventName').value,
+                eventTimestamp: new Date().toISOString(),
+                prop1: document.getElementById('prop1').value,
+                prop2: document.getElementById('prop2').value,
+                prop3: document.getElementById('prop3').value,
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/events`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(eventData),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to send event');
+                }
+
+                console.log('Event sent successfully!');
+            } catch (error) {
+                console.error('Error sending event:', error);
+                alert(`Error: ${error.message}`);
+            }
+        });
+
+        // --- Logic for Receiving Real-Time Events (SSE) ---
+        function connectToEventStream() {
+            console.log(`Initializing EventSource connection to ${API_URL}/events...`);
+            const eventSource = new EventSource(`${API_URL}/events`);
+
+            let firstEventReceived = false;
+
+            eventSource.onopen = () => {
+                statusDiv.textContent = 'Connected to event stream. Waiting for data...';
+                statusDiv.className = 'status connected';
+                console.log('Connection to /events opened.');
+            };
+
+            eventSource.onmessage = (event) => {
+                if (!firstEventReceived) {
+                    eventList.innerHTML = '';
+                    firstEventReceived = true;
+                }
+
+                const eventData = JSON.parse(event.data);
+                console.log('SSE event received:', eventData);
+
+                const listItem = document.createElement('li');
+                const pre = document.createElement('pre');
+                pre.textContent = JSON.stringify(eventData, null, 2);
+
+                // Check if prop1 is a string that looks like an image URL
+                const prop1Value = eventData.prop1;
+                if (prop1Value && typeof prop1Value === 'string') {
+                    const isImage = /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(prop1Value) || prop1Value.startsWith('data:image');
+                    if (isImage) {
+                        const img = document.createElement('img');
+                        img.src = prop1Value;
+                        img.alt = eventData.eventName;
+                        // Hide the image element if it fails to load
+                        img.onerror = () => { img.style.display = 'none'; };
+                        // Prepend the image so it appears above the text
+                        listItem.appendChild(img);
+                    }
+                }
+                
+                // Append the raw data text
+                listItem.appendChild(pre);
+
+                // Add the new event to the top of the list
+                eventList.prepend(listItem);
+            };
+
+            eventSource.onerror = (err) => {
+                statusDiv.textContent = 'Connection failed. Is the server running? Will attempt to reconnect automatically.';
+                statusDiv.className = 'status disconnected';
+                console.error('EventSource failed:', err);
+            };
+        }
+
+        // Start the connection when the page loads.
+        connectToEventStream();
+    </script>
+
+</body>
+</html>
