@@ -13,7 +13,7 @@
             color: #333;
         }
         .container {
-            max-width: 800px;
+            max-width: 960px;
             margin: 0 auto;
             background: #fff;
             padding: 2rem;
@@ -28,13 +28,8 @@
         }
         form {
             display: grid;
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
-        }
-        @media (min-width: 600px) {
-            form {
-                grid-template-columns: repeat(2, 1fr);
-            }
         }
         input {
             width: 100%;
@@ -53,44 +48,46 @@
             font-size: 1rem;
             cursor: pointer;
             transition: background-color 0.2s;
-            grid-column: 1 / -1; /* Span full width */
         }
         button:hover {
             background-color: #3182ce;
         }
-        #event-list {
-            list-style-type: none;
-            padding: 0;
+        form button {
+             grid-column: 1 / -1;
+        }
+        #event-table-container {
             margin-top: 2rem;
+            overflow-x: auto;
         }
-        #event-list li {
-            background-color: #edf2f7;
-            padding: 1rem;
-            border-radius: 4px;
-            margin-bottom: 1rem; /* Increased margin */
-            border-left: 5px solid #4299e1; /* Add a highlight color */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
         }
-        #event-list li .event-prop {
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: flex-start;
+        th, td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: middle;
         }
-        #event-list li .prop-label {
+        th {
+            background-color: #f7fafc;
             font-weight: 600;
             color: #4a5568;
-            margin-right: 0.5rem;
-            flex-shrink: 0;
         }
-        #event-list li .prop-value {
-            color: #1a202c;
-            word-break: break-all;
+        #event-table-body tr {
+            cursor: pointer;
         }
-        #event-list li img {
-            max-width: 100%;
-            max-height: 250px;
+        #event-table-body tr:hover {
+            background-color: #f1f5f9;
+        }
+        td {
+            color: #2d3748;
+        }
+        td img {
+            max-width: 120px;
+            max-height: 80px;
             border-radius: 4px;
-            margin-top: 0.25rem;
-            display: block;
+            object-fit: cover;
         }
         .status {
             padding: 1rem;
@@ -105,97 +102,179 @@
             background-color: #fed7d7;
             color: #c53030;
         }
+        /* Profile View Styles */
+        #profile-header {
+            padding: 1rem;
+            background-color: #f7fafc;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        #profile-header img {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #profile-name {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        #back-button {
+            margin-bottom: 1.5rem;
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>Real-Time Event API Tester</h1>
-
-        <!-- Connection Status -->
-        <div id="connection-status" class="status disconnected">
-            Connecting to event stream...
+        <!-- Main View: Form and Live Feed -->
+        <div id="main-view">
+            <h1>Real-Time Event API Tester</h1>
+            <div id="connection-status" class="status disconnected">Connecting to event stream...</div>
+            <section>
+                <h2>Submit a New Event</h2>
+                <form id="event-form">
+                    <input type="text" id="eventName" placeholder="Event Name" required>
+                    <input type="text" id="prop1" placeholder="Property 1 (Customer Name)" required>
+                    <input type="text" id="prop2" placeholder="Property 2" required>
+                    <input type="text" id="prop3" placeholder="Property 3" required>
+                    <input type="text" id="imgURL" placeholder="Image URL (optional)">
+                    <button type="submit">Send Event</button>
+                </form>
+            </section>
+            <section>
+                <h2>Live Event Feed</h2>
+                <div id="event-table-container">
+                    <table id="event-table">
+                        <thead>
+                            <tr>
+                                <th>Event Name</th>
+                                <th>Timestamp</th>
+                                <th>Prop 1</th>
+                                <th>Prop 2</th>
+                                <th>Prop 3</th>
+                                <th>Image</th>
+                            </tr>
+                        </thead>
+                        <tbody id="event-table-body"></tbody>
+                    </table>
+                </div>
+            </section>
         </div>
 
-        <!-- Form to Submit New Events -->
-        <section>
-            <h2>Submit a New Event</h2>
-            <form id="event-form">
-                <input type="text" id="eventName" placeholder="Event Name (e.g., page_view)" required>
-                <input type="text" id="prop1" placeholder="Property 1 (or image URL)" required>
-                <input type="text" id="prop2" placeholder="Property 2" required>
-                <input type="text" id="prop3" placeholder="Property 3" required>
-                <button type="submit">Send Event</button>
-            </form>
-        </section>
-
-        <!-- Real-time list of received events -->
-        <section>
-            <h2>Live Event Feed</h2>
-            <ul id="event-list">
-                <li>Waiting for events...</li>
-            </ul>
-        </section>
+        <!-- Profile View: Hidden by default -->
+        <div id="profile-view" style="display: none;"></div>
     </div>
 
     <script>
         // --- Configuration ---
         const API_URL = 'https://icecdp.onrender.com';
         
-        console.log(`API URL set to: ${API_URL}`);
+        // --- Client-side data store ---
+        let allEvents = [];
 
         // --- DOM Elements ---
+        const mainView = document.getElementById('main-view');
+        const profileView = document.getElementById('profile-view');
         const eventForm = document.getElementById('event-form');
-        const eventList = document.getElementById('event-list');
+        const tableBody = document.getElementById('event-table-body');
         const statusDiv = document.getElementById('connection-status');
 
-        // --- Helper Function ---
-        /**
-         * Formats an ISO date string into a more readable local time format.
-         * @param {string} isoString The ISO date string.
-         * @returns {string} A formatted date string (e.g., "Jul 21, 2024, 10:05:30 AM").
-         */
+        // --- Helper Functions ---
         function formatReadableDate(isoString) {
             if (!isoString) return 'N/A';
             try {
-                const date = new Date(isoString);
-                return date.toLocaleString(undefined, {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    second: '2-digit'
+                return new Date(isoString).toLocaleString(undefined, {
+                    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit'
                 });
             } catch (e) {
-                return isoString; // Fallback to original string if invalid
+                return isoString;
             }
+        }
+
+        function showProfile(prop1Value) {
+            // Filter events for the selected profile
+            const profileEvents = allEvents
+                .filter(e => e.prop1 === prop1Value)
+                .sort((a, b) => new Date(b.eventTimestamp) - new Date(a.eventTimestamp)); // Sort by date, newest first
+
+            if (profileEvents.length === 0) return;
+
+            const latestEvent = profileEvents[0];
+            const latestImgURL = latestEvent.imgURL || 'https://placehold.co/80x80/e2e8f0/4a5568?text=N/A';
+
+            // Build Profile View HTML
+            let profileHTML = `
+                <button id="back-button">← Back to Feed</button>
+                <h2>Customer Profile</h2>
+                <div id="profile-header">
+                    <a href="${latestImgURL}" target="_blank" rel="noopener noreferrer">
+                        <img src="${latestImgURL}" alt="Profile Image" onerror="this.onerror=null;this.src='https://placehold.co/80x80/e2e8f0/4a5568?text=N/A';">
+                    </a>
+                    <div>
+                        <div class="prop-label">Name</div>
+                        <div id="profile-name">${prop1Value}</div>
+                    </div>
+                </div>
+                <h3>Event History</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Event Name</th>
+                            <th>Timestamp</th>
+                            <th>Prop 2</th>
+                            <th>Prop 3</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${profileEvents.map(event => `
+                            <tr>
+                                <td>${event.eventName || 'N/A'}</td>
+                                <td>${formatReadableDate(event.eventTimestamp)}</td>
+                                <td>${event.prop2 || 'N/A'}</td>
+                                <td>${event.prop3 || 'N/A'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            profileView.innerHTML = profileHTML;
+
+            // Switch views
+            mainView.style.display = 'none';
+            profileView.style.display = 'block';
+
+            // Add listener to the new back button
+            document.getElementById('back-button').addEventListener('click', () => {
+                mainView.style.display = 'block';
+                profileView.style.display = 'none';
+            });
         }
 
         // --- Logic for Submitting Events ---
         eventForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const eventData = {
                 eventName: document.getElementById('eventName').value,
                 eventTimestamp: new Date().toISOString(),
                 prop1: document.getElementById('prop1').value,
                 prop2: document.getElementById('prop2').value,
                 prop3: document.getElementById('prop3').value,
+                imgURL: document.getElementById('imgURL').value,
             };
-
             try {
                 const response = await fetch(`${API_URL}/events`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(eventData),
                 });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to send event');
-                }
-
+                if (!response.ok) throw new Error((await response.json()).error || 'Failed to send event');
                 console.log('Event sent successfully!');
             } catch (error) {
                 console.error('Error sending event:', error);
@@ -208,77 +287,55 @@
             console.log(`Initializing EventSource connection to ${API_URL}/events...`);
             const eventSource = new EventSource(`${API_URL}/events`);
 
-            let firstEventReceived = false;
-
             eventSource.onopen = () => {
                 statusDiv.textContent = 'Connected to event stream. Waiting for data...';
                 statusDiv.className = 'status connected';
-                console.log('Connection to /events opened.');
             };
 
             eventSource.onmessage = (event) => {
-                if (!firstEventReceived) {
-                    eventList.innerHTML = '';
-                    firstEventReceived = true;
-                }
-
                 const eventData = JSON.parse(event.data);
-                console.log('SSE event received:', eventData);
+                allEvents.push(eventData); // Store every event
+                
+                const newRow = document.createElement('tr');
+                newRow.addEventListener('click', () => showProfile(eventData.prop1));
 
-                const listItem = document.createElement('li');
-
-                // Helper function to create a property row
-                const createPropDiv = (label, value) => {
-                    const div = document.createElement('div');
-                    div.className = 'event-prop';
-                    div.innerHTML = `<span class="prop-label">${label}:</span><span class="prop-value">${value}</span>`;
-                    return div;
+                const createCell = (content) => {
+                    const cell = document.createElement('td');
+                    cell.innerHTML = content;
+                    return cell;
                 };
 
-                // Add Event Name and Timestamp
-                listItem.appendChild(createPropDiv('Event', eventData.eventName || 'N/A'));
-                listItem.appendChild(createPropDiv('Timestamp', formatReadableDate(eventData.eventTimestamp)));
+                newRow.appendChild(createCell(eventData.eventName || 'N/A'));
+                newRow.appendChild(createCell(formatReadableDate(eventData.eventTimestamp)));
+                newRow.appendChild(createCell(eventData.prop1 || 'N/A'));
+                newRow.appendChild(createCell(eventData.prop2 || 'N/A'));
+                newRow.appendChild(createCell(eventData.prop3 || 'N/A'));
 
-                // --- Robustly handle Property 1 (Image or Text) ---
-                const prop1Div = document.createElement('div');
-                prop1Div.className = 'event-prop';
-                prop1Div.innerHTML = `<span class="prop-label">Property 1:</span>`;
-
-                const prop1Value = eventData.prop1;
-                const isImage = prop1Value && typeof prop1Value === 'string' && (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(prop1Value) || prop1Value.startsWith('data:image'));
-
-                if (isImage) {
+                const imgCell = document.createElement('td');
+                if (eventData.imgURL) {
                     const img = document.createElement('img');
-                    img.src = prop1Value;
-                    img.alt = eventData.eventName;
-                    // **FIXED**: On error, replace the image with text indicating the failure.
+                    img.src = eventData.imgURL;
+                    img.alt = 'Event Image';
                     img.onerror = () => {
-                        const fallbackText = document.createElement('span');
-                        fallbackText.className = 'prop-value';
-                        fallbackText.textContent = `${prop1Value} (Image failed to load)`;
-                        img.replaceWith(fallbackText);
+                        const link = document.createElement('a');
+                        link.href = eventData.imgURL;
+                        link.textContent = 'View Image';
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        img.replaceWith(link);
                     };
-                    prop1Div.appendChild(img);
+                    imgCell.appendChild(img);
                 } else {
-                    const textValue = document.createElement('span');
-                    textValue.className = 'prop-value';
-                    textValue.textContent = prop1Value || 'N/A';
-                    prop1Div.appendChild(textValue);
+                    imgCell.textContent = 'No Image';
                 }
-                listItem.appendChild(prop1Div);
-
-                // Add other properties
-                listItem.appendChild(createPropDiv('Property 2', eventData.prop2 || 'N/A'));
-                listItem.appendChild(createPropDiv('Property 3', eventData.prop3 || 'N/A'));
-
-                // Add the new event to the top of the list
-                eventList.prepend(listItem);
+                newRow.appendChild(imgCell);
+                
+                tableBody.prepend(newRow);
             };
 
             eventSource.onerror = (err) => {
                 statusDiv.textContent = 'Connection failed. Is the server running? Will attempt to reconnect automatically.';
                 statusDiv.className = 'status disconnected';
-                console.error('EventSource failed:', err);
             };
         }
 
